@@ -28,7 +28,7 @@ void scan_i2c() {
     byte address, error;
     bool found = false;
 
-    Serial.println("Scanning I2CS address ["+String(I2CS_START_ADDR)+" .. "+String(WIRE_MAX)+"]");
+    SerialPrintln("Scanning I2CS address ["+String(I2CS_START_ADDR)+" .. "+String(WIRE_MAX)+"]");
     for (address = I2CS_START_ADDR; address < WIRE_MAX; address++) {
         Wire.beginTransmission(address);
         error = Wire.endTransmission();
@@ -37,15 +37,27 @@ void scan_i2c() {
             found = true;
             if (address < 16)
                 Serial.print("0");
-            Serial.print(address, HEX);
-            Serial.print(" ");
+            SERIAL_LOGGER.print(address, HEX);
+            SERIAL_LOGGER.print(" ");
         }
     }
 
     if (found == false)
-        Serial.println("no I2CS detected");
+        SERIAL_LOGGER.println("no I2CS detected");
     else
-        Serial.print("\n");
+        SERIAL_LOGGER.print("\n");
+}
+
+void wire_flush(int address) {
+    byte i = 0;
+    
+    SerialPrintln("Flush I2CS data from ["+String(address)+"]");
+    while (i++ < 40) {
+        wire_setup();
+        Wire.requestFrom(address, 1);
+        while (Wire.available())
+            Wire.read();
+    }
 }
 
 void wire_send(byte address, char *msg) {
@@ -56,10 +68,15 @@ void wire_send(byte address, char *msg) {
 }
 
 void wire_read(int address) {
+    char c = '\n';
     wire_setup();
     Wire.requestFrom(address, 1);
-    if (Wire.available()) {
-        char c = Wire.read();
-        Serial.print(c);
-    }
+    if (address < 16)
+        SERIAL_LOGGER.print("0");
+    SERIAL_LOGGER.print(address, HEX);
+    SERIAL_LOGGER.print(":");
+    if (Wire.available())
+        c = Wire.read();
+    SERIAL_LOGGER.print(String(c));
+    SERIAL_LOGGER.print(LINE_EOL);
 }
