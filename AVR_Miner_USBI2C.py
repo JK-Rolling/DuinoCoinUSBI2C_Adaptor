@@ -389,6 +389,7 @@ def load_config():
     global SOC_TIMEOUT
     global ser
     global usbi2c_port
+    global usbi2c_baudrate
 
     if not Path(str(Settings.DATA_DIR) + '/Settings.cfg').is_file():
         print(
@@ -440,6 +441,12 @@ def load_config():
             sleep(2)
         except:
             pass
+            
+        usbi2c_baudrate = input(
+            Style.RESET_ALL + Fore.YELLOW
+            + str("USBI2C Baudrate (e.g. 115200): ")
+            + Fore.RESET + Style.BRIGHT)
+        Settings.BAUDRATE = int(usbi2c_baudrate)
             
         try:
             ser = Serial(usbi2c_port, baudrate=int(Settings.BAUDRATE),
@@ -534,7 +541,8 @@ def load_config():
             "discord_presence": "y",
             "periodic_report":  60,
             "shuffle_ports":    "y",
-            "usbi2c_port":      usbi2c_port}
+            "usbi2c_port":      usbi2c_port,
+            "usbi2c_baudrate":  usbi2c_baudrate}
 
         with open(str(Settings.DATA_DIR)
                   + '/Settings.cfg', 'w') as configfile:
@@ -559,6 +567,7 @@ def load_config():
         Settings.REPORT_TIME = int(config["AVR Miner"]["periodic_report"])
         hashrate_list = [0] * len(avrport)
         usbi2c_port = config["AVR Miner"]['usbi2c_port']
+        Settings.BAUDRATE = int(config["AVR Miner"]['usbi2c_baudrate'])
 
 
 def greeting():
