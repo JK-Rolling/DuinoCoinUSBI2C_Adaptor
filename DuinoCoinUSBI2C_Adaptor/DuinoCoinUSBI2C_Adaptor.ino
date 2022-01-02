@@ -4,7 +4,8 @@
  * JK Rolling
  * 31-Dec-2021
  * https://github.com/JK-Rolling/DuinoCoinUSBI2C_Adaptor
- * v0.1
+ * v0.2 - support i2c bus flush, add source i2cs addr to wire_read()
+ * v0.1 - alpha version
  * 
  * this code should make the AVR/ESP with USB-Serial capability to passthrough Serial data command
  * to I2C bus. the command should be similar to I2C format. the read/write data length is always 1.
@@ -12,51 +13,37 @@
  *           - I2CS should see address=1, direction=write, data=a
  * for read - address:read$ e.g. 1:r$
  *          - I2CS should see address=1, direction=1
- * for scan - scn$ - scan I2CS range 1-127. address 0 is reserved.
+ * for scan - scn$ - scan I2CS range 1-127. address 0 is reserved
+ * for flush - fl - flush 40 bytes from target I2CS
  * 
  * I2CS Duino-Coin Miner code
  * https://github.com/JK-Rolling/DuinoCoinI2C_RPI
  */
 //#define DEBUG_ON
 
-// BAUDRATE 115200 should match I2C 100KHz
-// other BAUDRATE includes 128000, 153600, 230400, 460800, 921600, 1500000, 2000000
 #define BAUDRATE 115200
 
+#define SERIAL_LOGGER Serial
 #ifdef DEBUG_ON
-  #define SerialBegin()              Serial.begin(115200);
-  #define SerialPrint(x)             Serial.print(x);
-  #define SerialPrintln(x)           Serial.println(x);
+  #define SerialPrint(x)             SERIAL_LOGGER.print(x);
+  #define SerialPrintln(x)           SERIAL_LOGGER.println(x);
 #else
-  #define SerialBegin()
   #define SerialPrint(x)
   #define SerialPrintln(x)
 #endif
 
-#if ESP8266
-  #define LED_ON LOW
-  #define LED_OFF HIGH  
-#else
-  #define LED_ON HIGH
-  #define LED_OFF LOW
-#endif
-#define ON true
-#define OFF false
-#define LINE_SEP '$'
+#define LINE_EOL '$'
 
-// max usb_data length could be 8. e.g 127:w:f$
 const byte num_chars = 9;
 static char usb_data[num_chars];
 static bool new_data = false;
 
 void setup() {
-  pinMode(LED_BUILTIN, OUTPUT);
-  led(OFF);
-  Serial.begin(BAUDRATE);
-  Serial.setTimeout(10000);
+  SERIAL_LOGGER.begin(BAUDRATE);
+  SERIAL_LOGGER.setTimeout(10000);
   wire_setup();
-  while (!Serial);
-  Serial.flush();
+  while (!SERIAL_LOGGER);
+  SERIAL_LOGGER.flush();
   SerialPrintln("\nStartup Done!");
 }
 
@@ -69,10 +56,10 @@ void recv_usb() {
     static byte idx = 0;
     char rc;
 
-    while (Serial.available() > 0 && new_data == false) {
-        rc = Serial.read();
+    while (SERIAL_LOGGER.available() > 0 && new_data == false) {
+        rc = SERIAL_LOGGER.read();
 
-        if (rc != LINE_SEP) {
+        if (rc != LINE_EOL) {
             usb_data[idx++] = rc;
             if (idx >= num_chars) {
                 idx = num_chars - 1;
@@ -82,7 +69,7 @@ void recv_usb() {
             usb_data[idx] = '\0';
             idx = 0;
             new_data = true;
-            SerialPrintln("Received USB:["+String(usb_data)+LINE_SEP+"]");
+            SerialPrintln("Received USB:["+String(usb_data)+LINE_EOL+"]");
         }
     }
 }
@@ -98,11 +85,10 @@ void process_usb_data() {
         // direction
         char *usbi2c_rw = strtok(NULL,delimiter);
     
-        // data
+        // data | flush target address
         char *usbi2c_data = strtok(NULL,delimiter);
         
         bool wire_sent = usbi2c(usb_cmd, usbi2c_rw, usbi2c_data);
-        led(OFF);
         new_data = false; 
     }
 }
@@ -116,8 +102,15 @@ bool usbi2c(char * cmd, char * rw, char * wdata) {
     }
     SerialPrintln("usbi2c usb_cmd: ["+String(cmd) + "]");
     if (strcmp(cmd, "scn") == 0) {
-        led(ON);
         scan_i2c();
+    }
+    else if (strcmp(cmd, "fl") == 0) {
+        i2cs_addr = atoi(wdata);
+        if (atoi(wdata) > 127 || i2cs_addr == 0) {
+            SerialPrintln("Invalid address range:["+String(wdata)+"]");
+            return false;
+        }
+        wire_flush(i2cs_addr);
     }
     else {
         if (rw == NULL) {
@@ -137,12 +130,10 @@ bool usbi2c(char * cmd, char * rw, char * wdata) {
                 return false;
             }
             SerialPrintln("I2C Write:["+String(rw)+"] with address:["+String(i2cs_addr)+"]  data:["+String(wdata)+"]");
-            led(ON);
             wire_send(i2cs_addr, wdata);
         }
         else if (strcmp(rw, "r") == 0) {
             SerialPrintln("I2C Read:["+String(rw)+"] with address:["+String(i2cs_addr)+"]");
-            led(ON);
             wire_read(i2cs_addr);
         }
         else {
@@ -150,21 +141,4 @@ bool usbi2c(char * cmd, char * rw, char * wdata) {
         }
     }
     return true;
-}
-
-void led(bool state) {
-    if (state) {
-        #if defined(ARDUINO_ARCH_AVR)
-            PORTB = PORTB & B11011111;
-        #else
-            digitalWrite(LED_BUILTIN, LED_ON);
-        #endif
-    }
-    else {
-        #if defined(ARDUINO_ARCH_AVR)
-            PORTB = PORTB | B00100000;
-        #else
-            digitalWrite(LED_BUILTIN, LED_OFF);
-        #endif
-    }
 }
