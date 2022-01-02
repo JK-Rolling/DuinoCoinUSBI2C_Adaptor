@@ -39,6 +39,7 @@ from threading import Thread
 from threading import Lock as thread_lock
 from threading import Semaphore
 printlock = Semaphore(value=1)
+serlock = Semaphore(value=1)
 
 def install(package):
     try:
@@ -462,7 +463,7 @@ def load_config():
                         encoding=Settings.ENCODING))
             sleep(1)
             debug_output(usbi2c_port + ': Reading I2CS scan result from the board')
-            result = ser.read_until(b'\n').decode().strip()
+            result = ser.read_until(b'\n').decode()
             ser.flush()
         except Exception as e:
             debug_output(usbi2c_port + f': USBI2C scan failure: {e}')
@@ -741,43 +742,33 @@ def share_print(id, type, accept, reject, total_hashrate,
         printlock.release()
 
 def usbi2c_write(ser,com,data):
-    try:
-        ser.write(bytes(str(str(com)
-                            + Settings.USBI2C_SEPARATOR
-                            + "w"
-                            + Settings.USBI2C_SEPARATOR
-                            + str(data)
-                            + Settings.USBI2C_EOL),
-                            encoding=Settings.ENCODING))
-    except:
-        pass
+    serlock.acquire()
+    ser.write(bytes(str(str(com)
+                        + Settings.USBI2C_SEPARATOR
+                        + "w"
+                        + Settings.USBI2C_SEPARATOR
+                        + str(data)
+                        + Settings.USBI2C_EOL),
+                        encoding=Settings.ENCODING))
+    serlock.release()
         
 def usbi2c_read(ser,com):
-    data = "\n"
-    try:
-        ser.write(bytes(str(str(com)
-                            + Settings.USBI2C_SEPARATOR
-                            + "r"
-                            + Settings.USBI2C_EOL),
-                            encoding=Settings.ENCODING))
-        data = ser.read(size=1).decode()
-    except:
-        pass
+    serlock.acquire()
+    ser.write(bytes(str(str(com)
+                        + Settings.USBI2C_SEPARATOR
+                        + "r"
+                        + Settings.USBI2C_EOL),
+                        encoding=Settings.ENCODING))
+    data = ser.read_until(b'$').decode().strip(Settings.USBI2C_EOL).split(Settings.USBI2C_SEPARATOR)
+    serlock.release()
         
     return data
         
 def flush_i2c(ser,com,period=2):
-    i2c_flush_start = time()
+    # period is not useful here. ignore
     with thread_lock():
-        while True:
-            try:
-                usbi2c_read(ser,com)
-            except:
-                pass
-            
-            i2c_flush_end = time()
-            if (i2c_flush_end - i2c_flush_start) > period:
-                break
+        usbi2c_write(ser,"fl",com)
+        sleep(0.1)
 
 def crc8(data):
     crc = 0
@@ -793,6 +784,7 @@ def crc8(data):
             byte = byte >> 1
     return crc
 
+result_pool = {}
 def mine_avr(com, threadid, fastest_pool):
     global hashrate
     global bad_crc8
@@ -802,6 +794,8 @@ def mine_avr(com, threadid, fastest_pool):
     last_report_share = 0
     last_bad_crc8 = 0
     last_i2c_retry_count = 0
+    _com = hex(int(com,base=16)).replace("0x","")
+    result_pool[_com] = ""
     
     while True:
         
@@ -910,7 +904,9 @@ def mine_avr(com, threadid, fastest_pool):
                                 pass
                     debug_output(com + ': Reading result from the board')
                     i2c_responses = ''
+                    i2c_rdata = []
                     result = []
+                    result_pool[_com] = ""
                     i2c_start_time = time()
                     sleep_en = True
                     while True:
@@ -920,10 +916,14 @@ def mine_avr(com, threadid, fastest_pool):
                             except Exception as e:
                                 debug_output(com + f': {e}')
                                 pass
-                        if ((i2c_rdata.isalnum()) or (',' in i2c_rdata)):
+                                
+                        # put i2c_rdata into their respective worker response
+                        i2cs_raddr = hex(int(i2c_rdata[0],base=16)).replace("0x","")
+                            
+                        if ((i2c_rdata[1].isalnum()) or (',' in i2c_rdata[1])):
                             sleep_en = False
-                            i2c_responses += i2c_rdata.strip()
-                        elif ('#' in i2c_rdata):
+                            result_pool[i2cs_raddr] += i2c_rdata[1].strip()
+                        elif ('#' in i2c_rdata[1]):
                             flush_i2c(ser,com)
                             debug_output(com + f': Retry Job: {job}')
                             raise Exception("I2C data corrupted")
@@ -931,9 +931,9 @@ def mine_avr(com, threadid, fastest_pool):
                             # feel free to play around this number to find sweet spot for shares/s vs. stability
                             sleep(0.05)
                             
-                        result = i2c_responses.split(',')
-                        if ((len(result)==4) and ('\n' in i2c_rdata)):
-                            debug_output(com + " i2c_responses:" + f'{i2c_responses}')
+                        result = result_pool[i2cs_raddr].split(',')
+                        if ((len(result)==4) and ('\n' in i2c_rdata[1])):
+                            debug_output(com + " i2c_responses:" + f'{result_pool[i2cs_raddr]}')
                             break
                             
                         i2c_end_time = time()
@@ -951,7 +951,7 @@ def mine_avr(com, threadid, fastest_pool):
                         if not result[2].isalnum():
                             debug_output(com + ' Corrupted DUCOID')
                             raise Exception("Corrupted DUCOID")
-                        _resp = i2c_responses.rpartition(Settings.SEPARATOR)[0]+Settings.SEPARATOR
+                        _resp = result_pool[i2cs_raddr].rpartition(Settings.SEPARATOR)[0]+Settings.SEPARATOR
                         result_crc8 = crc8(_resp.encode())
                         if int(result[3]) != result_crc8:
                             bad_crc8 += 1
