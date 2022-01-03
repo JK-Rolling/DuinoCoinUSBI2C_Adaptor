@@ -589,7 +589,7 @@ def greeting():
     print(
         Style.DIM + Fore.MAGENTA
         + Settings.BLOCK + Fore.YELLOW
-        + Style.BRIGHT + '\n  Unofficial Duino-Coin RPI I2C  AVR Miner'
+        + Style.BRIGHT + '\n  Unofficial Duino-Coin USBI2C AVR Miner'
         + Style.RESET_ALL + Fore.MAGENTA
         + f' {Settings.VER}' + Fore.RESET
         + ' 2021')
@@ -1001,7 +1001,7 @@ def mine_avr(com, threadid, fastest_pool):
                             + Settings.SEPARATOR
                             + str(hashrate_t)
                             + Settings.SEPARATOR
-                            + f'RPI I2C AVR Miner {Settings.VER}'
+                            + f'USBI2C AVR Miner {Settings.VER}'
                             + Settings.SEPARATOR
                             + str(rig_identifier)
                             + str(port_num(com))
