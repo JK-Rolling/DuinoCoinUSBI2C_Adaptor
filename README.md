@@ -1,5 +1,5 @@
 # DuinoCoinUSBI2C_Adaptor
-This project is designed to allow computer without I2C interface to mine [Duino-Coin](https://github.com/revoxhere/duino-coin) via I2C miner. The adaptor is suitable for most AVR/ESP with USB-Serial chip onboard.
+This project is designed to allow computer without I2C interface to mine [Duino-Coin](https://github.com/revoxhere/duino-coin) on I2C miner. The adaptor is suitable for most AVR/ESP with USB-Serial chip onboard.
 
 Using a single USB port to communicate with all the boards and make a scalable I2C mining rig with or without USB hub
 
@@ -71,7 +71,7 @@ Connect the pins of USBI2C and AVR like the table/images below, use a [Logic Lev
 |`SDA`| D2 | <---> | A4 |
 |`SCL`| D1 | <---> | A5 |
 
-|| ESP866 | Logic Level Converter | ATtiny85 |
+|| ESP8266 | Logic Level Converter | ATtiny85 |
 |:-:| :----: | :-----: | :-----: |
 ||3.3V | <---> | 5V |
 ||GND | <---> | GND |
@@ -87,7 +87,7 @@ Connect the pins of USBI2C and AVR like the table/images below, use a [Logic Lev
 
 || Pico || Pico |
 |:-:| :----: | :-----: | :-----: |
-||3V3 | <---> | VSYS |
+||VBUS | <---> | VSYS |
 ||GND | <---> | GND |
 |`SDA`| GP6 | <---> | GP6 |
 |`SCL`| GP7 | <---> | GP7 |
@@ -96,11 +96,13 @@ Connect the pins of USBI2C and AVR like the table/images below, use a [Logic Lev
 <img src="Resources/img/nano_bb.png" alt="Nano" width="100%">
 
 **Wemos USBI2C**
-<img src="Resources/img/d1r2_bb.png" alt="Nano" width="100%">
+<img src="Resources/img/d1r2_bb.png" alt="d1r2" width="100%">
 
 **Nodemcu USBI2C**
-<img src="Resources/img/nodemcu_bb.png" alt="Nano" width="100%">
+<img src="Resources/img/nodemcu_bb.png" alt="nodemcu" width="100%">
 
+**Pico USBI2C**
+<img src="Resources/img/pico_bb.png" alt="pico" width="100%">
 
 # License and Terms of service
 
