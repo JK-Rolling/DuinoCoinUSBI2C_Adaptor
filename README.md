@@ -3,6 +3,8 @@ This project is designed to allow computer without I2C interface to mine [Duino-
 
 Using a single USB port to communicate with all the boards and make a scalable I2C mining rig with or without USB hub
 
+This USBI2C Adaptor exists because SBC like Raspberry Pi is either too expensive or there is challenge in supply. Whereas PC/laptop is what most people already have, the adaptor can be used to test the I2C rig or solution to mine Duino-Coin
+
 ## Video Tutorial
 
 coming soon
