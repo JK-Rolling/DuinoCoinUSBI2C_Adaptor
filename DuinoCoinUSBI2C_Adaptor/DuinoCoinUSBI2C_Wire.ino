@@ -1,3 +1,4 @@
+#pragma GCC optimize ("-Ofast")
 #include <Wire.h>
 
 //#if ESP8266
