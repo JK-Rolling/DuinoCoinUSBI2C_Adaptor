@@ -34,7 +34,7 @@ Finally, connect your USBI2C_Adaptor to USB and I2C AVR miner, and launch the so
 
 ## Version
 
-DuinoCoin USBI2C Version 2.75
+DuinoCoin USBI2C Version 3.0
 
 # USBI2C - USB-to-I2C Master
 
