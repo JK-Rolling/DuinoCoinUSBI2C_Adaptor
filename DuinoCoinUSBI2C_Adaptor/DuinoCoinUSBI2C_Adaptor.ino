@@ -20,7 +20,7 @@
  * https://github.com/JK-Rolling/DuinoCoinI2C_RPI
  */
 //#define DEBUG_ON
-
+#pragma GCC optimize ("-Ofast")
 #define BAUDRATE 115200
 
 #define SERIAL_LOGGER Serial
