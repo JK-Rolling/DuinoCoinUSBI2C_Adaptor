@@ -944,6 +944,7 @@ def mine_avr(com, threadid, fastest_pool):
                         for i in range(0, len(i2c_data)):
                             try:
                                 usbi2c_write(ser,int(com, base=16),i2c_data[i])
+                                sleep(0.02)
                             except Exception as e:
                                 debug_output(com + f': {e}')
                                 pass
