@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-USBI2C AVR Miner 3.0 © MIT licensed
+USBI2C AVR Miner 3.1 © MIT licensed
 Modified by JK-Rolling
 20220101
 
@@ -22,6 +22,7 @@ from configparser import ConfigParser
 from pathlib import Path
 
 from json import load as jsonload
+import json
 from locale import LC_ALL, getdefaultlocale, getlocale, setlocale
 
 from re import sub
@@ -36,9 +37,16 @@ from subprocess import DEVNULL, Popen, check_call, call
 from threading import Thread
 from threading import Lock as thread_lock
 from threading import Semaphore
+
+import base64 as b64
+
 import os
 printlock = Semaphore(value=1)
 serlock = Semaphore(value=1)
+
+# Python <3.5 check
+f"Your Python version is too old. Duino-Coin Miner requires version 3.6 or above. Update your packages and try again"
+
 
 def install(package):
     try:
@@ -96,7 +104,7 @@ def port_num(com):
 
 
 class Settings:
-    VER = '3.0'
+    VER = '3.1'
     SOC_TIMEOUT = 45
     REPORT_TIME = 60
     AVR_TIMEOUT = 10  # diff 16 * 100 / 269 h/s = 5.94 s
@@ -110,6 +118,7 @@ class Settings:
     ENCODING = "utf-8"
     try:
         # Raspberry Pi latin users can't display this character
+        "‖".encode(sys.stdout.encoding)
         BLOCK = " ‖ "
     except:
         BLOCK = " | "
@@ -119,10 +128,86 @@ class Settings:
         or bool(osname == "nt"
                 and os.environ.get("WT_SESSION"))):
         # Windows' cmd does not support emojis, shame!
-        PICK = " ⛏"
-        COG = " ⚙"
+        # And some codecs same, for example the Latin-1 encoding don`t support emoji
+        try:
+            "⛏ ⚙".encode(sys.stdout.encoding) # if the terminal support emoji
+            PICK = " ⛏"
+            COG = " ⚙"
+        except UnicodeEncodeError: # else
+            PICK = ""
+            COG = " @"
 
+def check_mining_key(user_settings):
+    user_settings = user_settings["AVR Miner"]
 
+    if user_settings["mining_key"] != "None":
+        key = b64.b64decode(user_settings["mining_key"]).decode('utf-8')
+    else:
+        key = ''
+
+    response = requests.get(
+        "https://server.duinocoin.com/mining_key"
+            + "?u=" + user_settings["username"]
+            + "&k=" + key,
+        timeout=10
+    ).json()
+
+    if response["success"] and not response["has_key"]: # if the user doesn't have a mining key
+        user_settings["mining_key"] = "None"
+        config["AVR Miner"] = user_settings
+
+        with open(Settings.DATA_DIR + '/Settings.cfg',
+            "w") as configfile:
+            config.write(configfile)
+            print("sys0",
+                Style.RESET_ALL + get_string("config_saved"),
+                "info")
+        sleep(1.5)   
+        return
+
+    if not response["success"]:
+        if user_settings["mining_key"] == "None":
+            pretty_print(
+                "sys0",
+                get_string("mining_key_required"),
+                "warning")
+
+            mining_key = input("Enter your mining key: ")
+            user_settings["mining_key"] = b64.b64encode(mining_key.encode("utf-8")).decode('utf-8')
+            config["AVR Miner"] = user_settings
+
+            with open(Settings.DATA_DIR + '/Settings.cfg',
+                      "w") as configfile:
+                config.write(configfile)
+                print("sys0",
+                    Style.RESET_ALL + get_string("config_saved"),
+                    "info")
+            sleep(1.5)
+            check_mining_key(config)
+        else:
+            pretty_print(
+                "sys0",
+                get_string("invalid_mining_key"),
+                "error")
+
+            retry = input("You want to retry? (y/n): ")
+            if retry == "y" or retry == "Y":
+                mining_key = input("Enter your mining key: ")
+                user_settings["mining_key"] = b64.b64encode(mining_key.encode("utf-8")).decode('utf-8')
+                config["AVR Miner"] = user_settings
+
+                with open(Settings.DATA_DIR + '/Settings.cfg',
+                        "w") as configfile:
+                    config.write(configfile)
+                print("sys0",
+                    Style.RESET_ALL + get_string("config_saved"),
+                    "info")
+                sleep(1.5)
+                check_mining_key(config)
+            else:
+                return
+                
+                
 class Client:
     """
     Class helping to organize socket connections
@@ -170,11 +255,11 @@ class Client:
             except Exception as e:
                 if "Expecting value" in str(e):
                     pretty_print("net0", get_string("node_picker_unavailable")
-                                 + f"{retry_count*2}s {Style.RESET_ALL}({e})",
+                                 + f"15s {Style.RESET_ALL}({e})",
                                  "warning")
                 else:
                     pretty_print("net0", get_string("node_picker_error")
-                                 + f"{retry_count*2}s {Style.RESET_ALL}({e})",
+                                 + f"15s {Style.RESET_ALL}({e})",
                                  "error")
                 sleep(15)
 
@@ -307,6 +392,10 @@ try:
             lang = 'dutch'
         elif locale.startswith('ko'):
             lang = 'korean'
+        elif locale.startswith("id"):
+            lang = "indonesian"
+        elif locale.startswith("cz"):
+            lang = "czech"
         else:
             lang = 'english'
     else:
@@ -424,6 +513,14 @@ def load_config():
             + get_string('ask_username')
             + Fore.RESET + Style.BRIGHT)
             
+        mining_key = input(Style.RESET_ALL + Fore.YELLOW
+                           + get_string("ask_mining_key")
+                           + Fore.RESET + Style.BRIGHT)
+        if not mining_key:
+            mining_key = "None"
+        else:
+            mining_key = b64.b64encode(mining_key.encode("utf-8")).decode('utf-8')
+            
         print(Style.RESET_ALL + Fore.YELLOW
               + get_string('ports_message'))
         portlist = serial.tools.list_ports.comports(include_links=True)
@@ -445,6 +542,7 @@ def load_config():
                 Style.RESET_ALL + Fore.YELLOW
                 + get_string('ask_avrport')
                 + Fore.RESET + Style.BRIGHT)
+                      
 
             if current_port in port_names:
                 usbi2c_port += current_port
@@ -567,6 +665,7 @@ def load_config():
             "discord_presence": "y",
             "periodic_report":  60,
             "shuffle_ports":    "y",
+            "mining_key":       mining_key,
             "usbi2c_port":      usbi2c_port,
             "usbi2c_baudrate":  usbi2c_baudrate}
 
@@ -625,6 +724,7 @@ def greeting():
     print(
         Style.DIM + Fore.MAGENTA
         + Settings.BLOCK + Style.NORMAL + Fore.MAGENTA
+        + 'https://github.com/JK-Rolling  '
         + 'https://github.com/revoxhere/duino-coin')
 
     if lang != "english":
@@ -895,12 +995,21 @@ def mine_avr(com, threadid, fastest_pool):
                 
         while True:
             try:
+                
+                if config["AVR Miner"]["mining_key"] != "None":
+                    key = b64.b64decode(config["AVR Miner"]["mining_key"]).decode("utf-8")
+                else:
+                    key = config["AVR Miner"]["mining_key"]
+                    
                 debug_output(com + ': Requesting job')
                 Client.send(s, 'JOB'
                             + Settings.SEPARATOR
                             + str(username)
                             + Settings.SEPARATOR
-                            + 'AVR')
+                            + 'AVR'
+                            + Settings.SEPARATOR
+                            + str(key)
+                )
                 job = Client.recv(s, 128).split(Settings.SEPARATOR)
                 debug_output(com + f": Received: {job[0]}")
 
@@ -971,6 +1080,7 @@ def mine_avr(com, threadid, fastest_pool):
                             result_pool[i2cs_raddr] += i2c_rdata[1].strip()
                         elif ('#' in i2c_rdata[1]):
                             flush_i2c(ser,com)
+                                                                                       
                             debug_output(com + f': Retry Job: {job}')
                             raise Exception("I2C data corrupted")
                         elif sleep_en:
@@ -1144,23 +1254,26 @@ def periodic_report(start_time, end_time, shares,
 
 def calculate_uptime(start_time):
     uptime = time() - start_time
-    if uptime <= 59:
+    if uptime >= 7200: # 2 hours, plural
+        return str(uptime // 3600) + get_string('uptime_hours')
+    elif uptime >= 3600: # 1 hour, not plural
+        return str(uptime // 3600) + get_string('uptime_hour')
+    elif uptime >= 120: # 2 minutes, plural
+        return str(uptime // 60) + get_string('uptime_minutes')
+    elif uptime >= 60: # 1 minute, not plural
+        return str(uptime // 60) + get_string('uptime_minute')
+    else: # less than 1 minute
         return str(round(uptime)) + get_string('uptime_seconds')
-    elif uptime == 60:
-        return str(round(uptime // 60)) + get_string('uptime_minute')
-    elif uptime >= 60:
-        return str(round(uptime // 60)) + get_string('uptime_minutes')
-    elif uptime == 3600:
-        return str(round(uptime // 3600)) + get_string('uptime_hour')
-    elif uptime >= 3600:
-        return str(round(uptime // 3600)) + get_string('uptime_hours')
 
 
 if __name__ == '__main__':
     global ser
     init(autoreset=True)
     title(f"{get_string('duco_avr_miner')}{str(Settings.VER)})")
-
+    
+    if sys.platform == "win32":
+        os.system('') # Enable VT100 Escape Sequence for WINDOWS 10 Ver. 1607
+        
     try:
         load_config()
         debug_output('Config file loaded')
@@ -1178,7 +1291,12 @@ if __name__ == '__main__':
         debug_output('Greeting displayed')
     except Exception as e:
         debug_output(f'Error displaying greeting message: {e}')
-
+    
+    try:
+        check_mining_key(config)
+    except Exception as e:
+        debug_output(f'Error checking miner key: {e}')
+        
     if donation_level > 0:
         try:
             Donate.load(donation_level)
@@ -1215,3 +1333,4 @@ if __name__ == '__main__':
             init_rich_presence()
         except Exception as e:
             debug_output(f'Error launching Discord RPC thread: {e}')
+            
