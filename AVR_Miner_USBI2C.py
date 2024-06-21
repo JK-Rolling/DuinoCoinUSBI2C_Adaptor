@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-USBI2C AVR Miner 3.1 © MIT licensed
+USBI2C AVR Miner 4.1 © MIT licensed
 Modified by JK-Rolling
 20220101
 
 Full credit belong to
 https://duinocoin.com
 https://github.com/revoxhere/duino-coin
-Duino-Coin Team & Community 2019-2022
+Duino-Coin Team & Community 2019-2024
 """
 
 from os import _exit, mkdir
@@ -104,11 +104,11 @@ def port_num(com):
 
 
 class Settings:
-    VER = '3.1'
-    SOC_TIMEOUT = 45
+    VER = '4.1'
+    SOC_TIMEOUT = 15
     REPORT_TIME = 60
     AVR_TIMEOUT = 10  # diff 16 * 100 / 269 h/s = 5.94 s
-    DELAY_START = 60  # 60 seconds start delay between worker to help kolka sync efficiency drop
+    DELAY_START = 10  # 60 seconds start delay between worker to help kolka sync efficiency drop
     CRC8_EN = "y"
     BAUDRATE = 115200
     DATA_DIR = "Duino-Coin AVR Miner " + str(VER)
@@ -141,14 +141,14 @@ def check_mining_key(user_settings):
     user_settings = user_settings["AVR Miner"]
 
     if user_settings["mining_key"] != "None":
-        key = b64.b64decode(user_settings["mining_key"]).decode('utf-8')
+        key = "&k=" + b64.b64decode(user_settings["mining_key"]).decode('utf-8')
     else:
         key = ''
 
     response = requests.get(
         "https://server.duinocoin.com/mining_key"
             + "?u=" + user_settings["username"]
-            + "&k=" + key,
+            + key,
         timeout=10
     ).json()
 
@@ -162,7 +162,6 @@ def check_mining_key(user_settings):
             print("sys0",
                 Style.RESET_ALL + get_string("config_saved"),
                 "info")
-        sleep(1.5)   
         return
 
     if not response["success"]:
@@ -182,7 +181,6 @@ def check_mining_key(user_settings):
                 print("sys0",
                     Style.RESET_ALL + get_string("config_saved"),
                     "info")
-            sleep(1.5)
             check_mining_key(config)
         else:
             pretty_print(
@@ -190,7 +188,7 @@ def check_mining_key(user_settings):
                 get_string("invalid_mining_key"),
                 "error")
 
-            retry = input("You want to retry? (y/n): ")
+            retry = input("Do you want to retry? (y/n): ")
             if retry == "y" or retry == "Y":
                 mining_key = input("Enter your mining key: ")
                 user_settings["mining_key"] = b64.b64encode(mining_key.encode("utf-8")).decode('utf-8')
@@ -234,17 +232,17 @@ class Client:
                 response = requests.get(
                     "https://server.duinocoin.com/getPool",
                     timeout=10).json()
-                    
+
                 if response["success"] == True:
                     pretty_print("net0", get_string("connecting_node")
                                  + response["name"],
                                  "info")
-                                 
+
                     NODE_ADDRESS = response["ip"]
                     NODE_PORT = response["port"]
                     debug_output(f"Fetched pool: {response['name']}")
                     return (NODE_ADDRESS, NODE_PORT)
-                    
+
                 elif "message" in response:
                     pretty_print(f"Warning: {response['message']}"
                                  + ", retrying in 15s", "warning", "net0")
@@ -294,15 +292,22 @@ class Donate:
                         f.write(r.content)
 
     def start(donation_level):
-        if osname == 'nt':
+        donation_settings = requests.get(
+            "https://server.duinocoin.com/donations/settings.json").json()
+
+        if os.name == 'nt':
             cmd = (f'cd "{Settings.DATA_DIR}" & Donate.exe '
-                   + '-o stratum+tcp://xmg.minerclaim.net:3333 '
-                   + f'-u revox.donate -p x -s 4 -e {donation_level*3}')
-        elif osname == 'posix':
+                   + f'-o {donation_settings["url"]} '
+                   + f'-u {donation_settings["user"]} '
+                   + f'-p {donation_settings["pwd"]} '
+                   + f'-s 4 -e {donation_level*2}')
+        elif os.name == 'posix':
             cmd = (f'cd "{Settings.DATA_DIR}" && chmod +x Donate '
-                   + '&& nice -20 ./Donate -o '
-                   + 'stratum+tcp://xmg.minerclaim.net:3333 '
-                   + f'-u revox.donate -p x -s 4 -e {donation_level*3}')
+                   + '&& nice -20 ./Donate '
+                   + f'-o {donation_settings["url"]} '
+                   + f'-u {donation_settings["user"]} '
+                   + f'-p {donation_settings["pwd"]} '
+                   + f'-s 4 -e {donation_level*2}')
 
         if donation_level <= 0:
             pretty_print(
@@ -376,12 +381,16 @@ try:
             lang = 'german'
         elif locale.startswith('fr'):
             lang = 'french'
+        elif locale.startswith('jp'):
+            lang = 'japanese'
         elif locale.startswith('tr'):
             lang = 'turkish'
         elif locale.startswith('it'):
             lang = 'italian'
         elif locale.startswith('pt'):
             lang = 'portuguese'
+        if locale.startswith("zh_TW"):
+            lang = "chinese_Traditional"
         elif locale.startswith('zh'):
             lang = 'chinese_simplified'
         elif locale.startswith('th'):
@@ -396,6 +405,8 @@ try:
             lang = "indonesian"
         elif locale.startswith("cz"):
             lang = "czech"
+        elif locale.startswith("fi"):
+            lang = "finnish"
         else:
             lang = 'english'
     else:
@@ -476,6 +487,7 @@ def handler(signal_received, frame):
         'sys0', get_string('sigint_detected')
         + Style.NORMAL + Fore.RESET
         + get_string('goodbye'), 'warning')
+
     _exit(0)
 
 
@@ -508,23 +520,37 @@ def load_config():
             + Fore.YELLOW + get_string('wallet') + Fore.RESET
             + get_string('register_warning'))
 
-        username = input(
-            Style.RESET_ALL + Fore.YELLOW
-            + get_string('ask_username')
-            + Fore.RESET + Style.BRIGHT)
-            
-        mining_key = input(Style.RESET_ALL + Fore.YELLOW
+        correct_username = False
+        while not correct_username:
+            username = input(
+                Style.RESET_ALL + Fore.YELLOW
+                + get_string('ask_username')
+                + Fore.RESET + Style.BRIGHT)
+            if not username:
+                username = choice(["revox", "Bilaboz"])
+
+            r = requests.get(f"https://server.duinocoin.com/users/{username}", 
+                             timeout=Settings.SOC_TIMEOUT).json()
+            correct_username = r["success"]
+            if not correct_username:
+                print(get_string("incorrect_username"))
+
+        response = requests.get(
+            "https://server.duinocoin.com/mining_key"
+                + "?u=" + username, timeout=10
+        ).json()
+
+        mining_key = "None"
+        if response["has_key"]:
+            mining_key = input(Style.RESET_ALL + Fore.YELLOW
                            + get_string("ask_mining_key")
                            + Fore.RESET + Style.BRIGHT)
-        if not mining_key:
-            mining_key = "None"
-        else:
             mining_key = b64.b64encode(mining_key.encode("utf-8")).decode('utf-8')
-            
+
         print(Style.RESET_ALL + Fore.YELLOW
               + get_string('ports_message'))
         portlist = serial.tools.list_ports.comports(include_links=True)
-        
+
         for port in portlist:
             print(Style.RESET_ALL
                   + Style.BRIGHT + Fore.RESET
@@ -719,7 +745,7 @@ def greeting():
         + Style.BRIGHT + '\n  Unofficial Duino-Coin USBI2C AVR Miner'
         + Style.RESET_ALL + Fore.MAGENTA
         + f' {Settings.VER}' + Fore.RESET
-        + ' 2021-2022')
+        + ' 2021-2024')
 
     print(
         Style.DIM + Fore.MAGENTA
@@ -740,7 +766,7 @@ def greeting():
         + Settings.BLOCK + Style.NORMAL
         + Fore.RESET + get_string('avr_on_port')
         + Style.BRIGHT + Fore.YELLOW
-        + ' '.join(avrport))
+        + ', '.join(avrport))
 
     if osname == 'nt' or osname == 'posix':
         print(
@@ -961,7 +987,7 @@ def mine_avr(com, threadid, fastest_pool):
                             'success')
                     else:
                         pretty_print(
-                            'sys0', f' Miner is outdated (v{Settings.VER}) -'
+                            'sys0', f"{get_string('miner_is_outdated')} (v{Settings.VER}) -"
                             + get_string('server_is_on_version')
                             + server_version + Style.NORMAL
                             + Fore.RESET + get_string('update_warning'),
@@ -975,7 +1001,7 @@ def mine_avr(com, threadid, fastest_pool):
                         motd = motd.replace("\n", "\n\t\t")
 
                     pretty_print("net" + str(threadid),
-                                 " MOTD: " + Fore.RESET
+                                 get_string("motd") + Fore.RESET
                                  + Style.NORMAL + str(motd),
                                  "success")
                 break
@@ -1129,7 +1155,7 @@ def mine_avr(com, threadid, fastest_pool):
                     continue
 
             try:
-                computetime = round(int(result[1]) / 1000000, 3)
+                computetime = round(int(result[1]) / 1000000, 5)
                 num_res = int(result[0])
                 hashrate_t = round(num_res / computetime, 2)
 
@@ -1232,22 +1258,25 @@ def mine_avr(com, threadid, fastest_pool):
 
 
 def periodic_report(start_time, end_time, shares,
-                    block, hashrate, uptime, bad_crc8, i2c_retry_count):
+                    blocks, hashrate, uptime, bad_crc8, i2c_retry_count):
     seconds = round(end_time - start_time)
-    pretty_print("sys0",
-                 " " + get_string('periodic_mining_report')
+    pretty_print("sys0", " " + get_string("periodic_mining_report")
                  + Fore.RESET + Style.NORMAL
-                 + get_string('report_period')
-                 + str(seconds) + get_string('report_time')
-                 + get_string('report_body1')
-                 + str(shares) + get_string('report_body2')
+                 + get_string("report_period")
+                 + str(seconds) + get_string("report_time")
+                 + get_string("report_body1")
+                 + str(shares) + get_string("report_body2")
                  + str(round(shares/seconds, 1))
-                 + get_string('report_body3')
-                 + get_string('report_body7') + str(block)
-                 + get_string('report_body4')
-                 + str(int(hashrate)) + " H/s" + get_string('report_body5')
-                 + str(int(hashrate*seconds)) + get_string('report_body6')
-                 + get_string('total_mining_time') + str(uptime)
+                 + get_string("report_body3")
+                 + get_string("report_body7")
+                 + str(blocks)
+                 + get_string("report_body4")
+                 + str(get_prefix("H/s", hashrate, 2))
+                 + get_string("report_body5")
+                 + str(int(hashrate*seconds))
+                 + get_string("report_body6")
+                 + get_string("total_mining_time") 
+                 + str(uptime)
                  + "\n\t\t‖ CRC8 Error Rate: " + str(round(bad_crc8/seconds, 6)) + " E/s"
                  + "\n\t\t‖ I2C Retry Rate: " + str(round(i2c_retry_count/seconds, 6)) + " R/s", "success")
 
